@@ -36,6 +36,10 @@ public final class Money implements Comparable<Money> {
         return new Money(value.subtract(other.value));
     }
 
+    public boolean isNegative() {
+        return value.signum() < 0;
+    }
+
     public boolean isPositive() {
         return value.signum() > 0;
     }
