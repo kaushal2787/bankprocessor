@@ -39,6 +39,15 @@ final class Account {
         record(type, amount, transactionId, at, counterparty);
     }
 
+    /** @throws InsufficientFundsException before touching any state if the balance cannot cover the amount */
+    void debit(Money amount, TransactionType type, UUID transactionId, Instant at, AccountId counterparty) {
+        if (amount.isGreaterThan(balance)) {
+            throw new InsufficientFundsException(id, balance, amount);
+        }
+        balance = balance.minus(amount);
+        record(type, amount, transactionId, at, counterparty);
+    }
+
     private void record(TransactionType type, Money amount, UUID transactionId, Instant at, AccountId counterparty) {
         ledger.add(new LedgerEntry(transactionId, id, type, amount, balance, at, counterparty));
     }

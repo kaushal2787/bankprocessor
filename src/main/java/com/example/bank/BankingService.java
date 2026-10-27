@@ -45,6 +45,14 @@ public class BankingService {
         }
     }
 
+    public void withdraw(AccountId id, Money amount) {
+        requirePositive(amount);
+        Account account = find(id);
+        synchronized (account) {
+            account.debit(amount, TransactionType.WITHDRAWAL, UUID.randomUUID(), clock.instant(), null);
+        }
+    }
+
     public Money balanceOf(AccountId id) {
         Account account = find(id);
         synchronized (account) {
