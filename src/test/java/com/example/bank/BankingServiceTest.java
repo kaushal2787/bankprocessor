@@ -143,4 +143,56 @@ class BankingServiceTest {
             assertThrows(AccountNotFoundException.class, () -> bank.historyOf(BOB));
         }
     }
+
+    @Nested
+    @DisplayName("withdrawals")
+    class Withdrawals {
+
+        @BeforeEach
+        void openAlice() {
+            bank.openAccount(ALICE, Money.of("100.00"));
+        }
+
+        @Test
+        void decreaseTheBalanceAndAreRecordedInTheLedger() {
+            clock.advance(Duration.ofHours(1));
+            bank.withdraw(ALICE, Money.of("30.25"));
+
+            assertEquals(Money.of("69.75"), bank.balanceOf(ALICE));
+            LedgerEntry entry = bank.historyOf(ALICE).get(1);
+            assertEquals(TransactionType.WITHDRAWAL, entry.type());
+            assertEquals(Money.of("30.25"), entry.amount());
+            assertEquals(Money.of("69.75"), entry.balanceAfter());
+            assertEquals(Instant.parse("2026-01-01T10:00:00Z"), entry.timestamp());
+        }
+
+        @Test
+        void mayTakeTheWholeBalanceDownToExactlyZero() {
+            bank.withdraw(ALICE, Money.of("100.00"));
+            assertEquals(Money.ZERO, bank.balanceOf(ALICE));
+        }
+
+        @Test
+        void thatWouldOverdrawAreRefusedAndLeaveNoTrace() {
+            InsufficientFundsException e = assertThrows(InsufficientFundsException.class,
+                    () -> bank.withdraw(ALICE, Money.of("100.01")));
+
+            assertEquals(Money.of("100.00"), e.balance());
+            assertEquals(Money.of("100.01"), e.requested());
+            assertEquals(Money.of("100.00"), bank.balanceOf(ALICE));
+            assertEquals(1, bank.historyOf(ALICE).size());
+        }
+
+        @Test
+        void rejectZeroNegativeAndMissingAmounts() {
+            assertThrows(InvalidAmountException.class, () -> bank.withdraw(ALICE, Money.ZERO));
+            assertThrows(InvalidAmountException.class, () -> bank.withdraw(ALICE, Money.of("-1")));
+            assertThrows(InvalidAmountException.class, () -> bank.withdraw(ALICE, null));
+        }
+
+        @Test
+        void fromAnUnknownAccountFail() {
+            assertThrows(AccountNotFoundException.class, () -> bank.withdraw(BOB, Money.of("1")));
+        }
+    }
 }
