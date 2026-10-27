@@ -195,4 +195,78 @@ class BankingServiceTest {
             assertThrows(AccountNotFoundException.class, () -> bank.withdraw(BOB, Money.of("1")));
         }
     }
+
+    @Nested
+    @DisplayName("transfers")
+    class Transfers {
+
+        @BeforeEach
+        void openBothAccounts() {
+            bank.openAccount(ALICE, Money.of("100.00"));
+            bank.openAccount(BOB, Money.of("10.00"));
+        }
+
+        @Test
+        void moveMoneyFromOneAccountToTheOther() {
+            bank.transfer(ALICE, BOB, Money.of("40.00"));
+            assertEquals(Money.of("60.00"), bank.balanceOf(ALICE));
+            assertEquals(Money.of("50.00"), bank.balanceOf(BOB));
+        }
+
+        @Test
+        void appearOnBothLedgersAsOneTransactionWithTheCounterpartyNamed() {
+            clock.advance(Duration.ofDays(1));
+            bank.transfer(ALICE, BOB, Money.of("40.00"));
+
+            LedgerEntry out = bank.historyOf(ALICE).get(1);
+            LedgerEntry in = bank.historyOf(BOB).get(1);
+
+            assertEquals(TransactionType.TRANSFER_OUT, out.type());
+            assertEquals(TransactionType.TRANSFER_IN, in.type());
+            assertEquals(out.transactionId(), in.transactionId());
+            assertEquals(out.timestamp(), in.timestamp());
+            assertEquals(BOB, out.counterparty());
+            assertEquals(ALICE, in.counterparty());
+            assertEquals(Money.of("60.00"), out.balanceAfter());
+            assertEquals(Money.of("50.00"), in.balanceAfter());
+        }
+
+        @Test
+        void thatWouldOverdrawTheSourceChangeNeitherAccount() {
+            assertThrows(InsufficientFundsException.class, () -> bank.transfer(ALICE, BOB, Money.of("100.01")));
+
+            assertEquals(Money.of("100.00"), bank.balanceOf(ALICE));
+            assertEquals(Money.of("10.00"), bank.balanceOf(BOB));
+            assertEquals(1, bank.historyOf(ALICE).size());
+            assertEquals(1, bank.historyOf(BOB).size());
+        }
+
+        @Test
+        void mayEmptyTheSourceAccount() {
+            bank.transfer(ALICE, BOB, Money.of("100.00"));
+            assertEquals(Money.ZERO, bank.balanceOf(ALICE));
+        }
+
+        @Test
+        void toTheSameAccountAreRejectedBecauseTheyAreMeaninglessNoise() {
+            assertThrows(InvalidTransferException.class, () -> bank.transfer(ALICE, ALICE, Money.of("1")));
+            assertEquals(1, bank.historyOf(ALICE).size());
+        }
+
+        @Test
+        void rejectZeroNegativeAndMissingAmounts() {
+            assertThrows(InvalidAmountException.class, () -> bank.transfer(ALICE, BOB, Money.ZERO));
+            assertThrows(InvalidAmountException.class, () -> bank.transfer(ALICE, BOB, Money.of("-1")));
+            assertThrows(InvalidAmountException.class, () -> bank.transfer(ALICE, BOB, null));
+        }
+
+        @Test
+        void involvingAnUnknownAccountFailBeforeAnythingIsDebited() {
+            AccountId ghost = AccountId.of("ghost");
+            assertThrows(AccountNotFoundException.class, () -> bank.transfer(ALICE, ghost, Money.of("1")));
+            assertThrows(AccountNotFoundException.class, () -> bank.transfer(ghost, ALICE, Money.of("1")));
+            assertEquals(Money.of("100.00"), bank.balanceOf(ALICE));
+            assertEquals(1, bank.historyOf(ALICE).size());
+        }
+    }
 }
